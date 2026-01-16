@@ -13,8 +13,6 @@ class SidebarInjector {
       followUps: [],
       newLeads: []
     };
-    this.storeBridgeReady = false;
-    this.storeBridgePromise = null;
   }
 
   /**
@@ -378,18 +376,9 @@ class SidebarInjector {
 
     // Check authentication status on init
     this.checkAuthStatus();
-    
+
     // Load saved tab preference
     this.loadTabPreference();
-
-    // Listen for page-context bridge status
-    window.addEventListener('message', (event) => {
-      if (event.source !== window) return;
-      const { type } = event.data || {};
-      if (type === 'WA_CRM_STORE_READY') {
-        this.storeBridgeReady = true;
-      }
-    });
   }
 
   /**
@@ -397,7 +386,7 @@ class SidebarInjector {
    */
   async checkAuthStatus() {
     const { token, userEmail } = await chrome.storage.local.get(['token', 'userEmail']);
-    
+
     if (token) {
       this.showMainUI(userEmail);
     } else {
@@ -411,7 +400,7 @@ class SidebarInjector {
   showAuthUI() {
     const authSection = this.sidebar.querySelector('#crm-auth-section');
     const mainContent = this.sidebar.querySelector('#crm-main-content');
-    
+
     if (authSection) authSection.style.display = 'block';
     if (mainContent) mainContent.style.display = 'none';
   }
@@ -423,13 +412,13 @@ class SidebarInjector {
     const authSection = this.sidebar.querySelector('#crm-auth-section');
     const mainContent = this.sidebar.querySelector('#crm-main-content');
     const userEmailEl = this.sidebar.querySelector('#crm-user-email');
-    
+
     if (authSection) authSection.style.display = 'none';
     if (mainContent) mainContent.style.display = 'block';
     if (userEmailEl && userEmail) {
       userEmailEl.textContent = userEmail;
     }
-    
+
     // Load Overview data when authenticated
     if (this.activeTab === 'overview') {
       this.loadOverviewData();
@@ -441,22 +430,22 @@ class SidebarInjector {
    */
   switchTab(tab) {
     if (tab !== 'overview' && tab !== 'chat') return;
-    
+
     this.activeTab = tab;
-    
+
     // Update tab buttons
     const tabButtons = this.sidebar.querySelectorAll('.crm-main-tab');
     tabButtons.forEach(btn => {
       btn.classList.toggle('active', btn.dataset.tab === tab);
     });
-    
+
     // Update tab content
     const overviewContent = this.sidebar.querySelector('#crm-tab-content-overview');
     const chatContent = this.sidebar.querySelector('#crm-tab-content-chat');
-    
+
     if (overviewContent) overviewContent.classList.toggle('active', tab === 'overview');
     if (chatContent) chatContent.classList.toggle('active', tab === 'chat');
-    
+
     // Load data for active tab
     if (tab === 'overview') {
       this.loadOverviewData();
@@ -467,7 +456,7 @@ class SidebarInjector {
         this.loadChatData(chatId);
       }
     }
-    
+
     // Save tab preference
     this.saveTabPreference(tab);
   }
@@ -584,7 +573,7 @@ class SidebarInjector {
       const bHasReminder = b.reminders && b.reminders.length > 0;
       if (aHasReminder && !bHasReminder) return -1;
       if (!aHasReminder && bHasReminder) return 1;
-      
+
       const aTime = new Date(a.updated_at || a.created_at).getTime();
       const bTime = new Date(b.updated_at || b.created_at).getTime();
       return aTime - bTime;
@@ -594,7 +583,7 @@ class SidebarInjector {
       const name = chat.chat_name || chat.phone_number || 'Unknown';
       const hasReminder = chat.reminders && chat.reminders.length > 0;
       const timeAgo = this.formatTimeAgo(new Date(chat.updated_at || chat.created_at));
-      
+
       // Check if reminder is due today
       let reminderText = '';
       if (hasReminder) {
@@ -606,7 +595,7 @@ class SidebarInjector {
           reminderText = isToday ? ' ⏰ Today' : '';
         }
       }
-      
+
       return `
         <div class="crm-work-queue-item-compact" data-chat-id="${chat.whatsapp_id}">
           <span class="crm-work-queue-bullet">•</span>
@@ -629,168 +618,18 @@ class SidebarInjector {
    * Open chat in WhatsApp Web
    */
   openChat(chatId) {
-    const phoneNumber = DOMUtils.extractPhoneNumber(chatId);
-    if (!phoneNumber) return;
-  
+
+    const normalizedChatId = DOMUtils.normalizeChatId(chatId);
+    if (!normalizedChatId) return;
     this.switchTab('chat');
 
-    // Use injected page-context bridge to open chat without reload
-    this.ensureStoreBridge()
-      .then(() => {
-        window.postMessage({
-          type: 'WA_CRM_OPEN_CHAT',
-          phoneNumber
-        }, '*');
-      })
-      .catch(() => {
-        // Fallback: click chat if visible (no reload)
-        const chatSelector = `[data-id*="${phoneNumber}@c.us"], [data-id*="${phoneNumber}@g.us"]`;
-        const chatListItem = document.querySelector(chatSelector);
-        if (chatListItem) {
-          chatListItem.click();
-        }
-      });
+
+    const phoneNumber = DOMUtils.extractPhoneNumber(normalizedChatId);
+    if (!phoneNumber) return;
+    const whatsappUrl = `https://web.whatsapp.com/send?phone=${phoneNumber}`;
+    window.location.href = whatsappUrl;
   }
 
-  /**
-   * Inject page-context script to access WhatsApp webpack Store
-   */
-  ensureStoreBridge() {
-    if (this.storeBridgeReady) return Promise.resolve();
-    if (this.storeBridgePromise) return this.storeBridgePromise;
-
-    this.storeBridgePromise = new Promise((resolve, reject) => {
-      const existing = document.getElementById('wa-crm-store-bridge');
-      if (existing) {
-        // Wait briefly for store ready signal
-        const timeout = setTimeout(() => reject(new Error('Store bridge timeout')), 3000);
-        const handler = (event) => {
-          if (event.source !== window) return;
-          if (event.data?.type === 'WA_CRM_STORE_READY') {
-            clearTimeout(timeout);
-            window.removeEventListener('message', handler);
-            this.storeBridgeReady = true;
-            resolve();
-          }
-        };
-        window.addEventListener('message', handler);
-        return;
-      }
-
-      const script = document.createElement('script');
-      script.id = 'wa-crm-store-bridge';
-      script.textContent = `
-        (function() {
-          if (window.__waCrmBridgeInitialized) return;
-          window.__waCrmBridgeInitialized = true;
-
-          function getWebpackChunk() {
-            return (
-              window.webpackChunkwhatsapp_web_client ||
-              window.webpackChunkwhatsapp_web ||
-              window.webpackChunkbuild ||
-              window.webpackChunk ||
-              null
-            );
-          }
-
-          function extractStore() {
-            try {
-              const chunk = getWebpackChunk();
-              if (!chunk || !chunk.push) return null;
-              let req = null;
-              const id = Symbol('wa-crm');
-              chunk.push([
-                [id],
-                {},
-                function(r) {
-                  req = r;
-                }
-              ]);
-              if (!req || !req.c) return null;
-              const modules = Object.values(req.c);
-              for (const m of modules) {
-                const exp = m && m.exports;
-                const store = exp?.default || exp;
-                if (store?.Chat && store?.Cmd && store?.Chat?.models) {
-                  return store;
-                }
-              }
-            } catch (e) {}
-            return null;
-          }
-
-          function ensureStore() {
-            if (window.__waStore) return window.__waStore;
-            const store = extractStore();
-            if (store) {
-              window.__waStore = store;
-              return store;
-            }
-            return null;
-          }
-
-          function openChatByPhone(phone) {
-            const store = ensureStore();
-            if (!store) return false;
-            const chat = store.Chat.models.find(c => c?.id?.user === phone);
-            if (!chat) return false;
-            try {
-              store.Cmd.openChatAt(chat);
-              return true;
-            } catch (e) {
-              return false;
-            }
-          }
-
-          window.addEventListener('message', function(event) {
-            if (event.source !== window) return;
-            const data = event.data || {};
-            if (data.type === 'WA_CRM_OPEN_CHAT') {
-              const ok = openChatByPhone(data.phoneNumber);
-              window.postMessage({ type: 'WA_CRM_OPEN_CHAT_RESULT', ok }, '*');
-              return;
-            }
-          });
-
-          // Try to initialize store immediately
-          const store = ensureStore();
-          if (store) {
-            window.postMessage({ type: 'WA_CRM_STORE_READY' }, '*');
-          } else {
-            // Retry a few times for webpack to be ready
-            let attempts = 0;
-            const interval = setInterval(() => {
-              attempts += 1;
-              const s = ensureStore();
-              if (s || attempts > 10) {
-                clearInterval(interval);
-                if (s) window.postMessage({ type: 'WA_CRM_STORE_READY' }, '*');
-              }
-            }, 300);
-          }
-        })();
-      `;
-
-      document.documentElement.appendChild(script);
-      script.remove();
-
-      const timeout = setTimeout(() => reject(new Error('Store bridge timeout')), 3000);
-      const handler = (event) => {
-        if (event.source !== window) return;
-        if (event.data?.type === 'WA_CRM_STORE_READY') {
-          clearTimeout(timeout);
-          window.removeEventListener('message', handler);
-          this.storeBridgeReady = true;
-          resolve();
-        }
-      };
-      window.addEventListener('message', handler);
-    });
-
-    return this.storeBridgePromise;
-  }
-  
 
   /**
    * Format time ago (compact format)
@@ -801,7 +640,7 @@ class SidebarInjector {
     const yesterday = new Date(today);
     yesterday.setDate(yesterday.getDate() - 1);
     const dateOnly = new Date(date.getFullYear(), date.getMonth(), date.getDate());
-    
+
     const diff = now.getTime() - date.getTime();
     const minutes = Math.floor(diff / 60000);
     const hours = Math.floor(diff / 3600000);
@@ -812,17 +651,17 @@ class SidebarInjector {
       if (hours < 1) return `${minutes}m ago`;
       return `${hours}h ago`;
     }
-    
+
     // Check if yesterday
     if (dateOnly.getTime() === yesterday.getTime()) {
       return 'Yesterday';
     }
-    
+
     // Days ago
     if (days < 7) {
       return `${days}d ago`;
     }
-    
+
     // Older dates
     return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
   }
@@ -843,7 +682,7 @@ class SidebarInjector {
     const now = Date.now();
     const today = new Date();
     today.setHours(0, 0, 0, 0);
-    
+
     let dueTodayCount = 0;
 
     chats.forEach(chat => {
@@ -862,7 +701,7 @@ class SidebarInjector {
 
     const badge = this.sidebar.querySelector('#crm-overview-badge');
     const followUpBadge = this.sidebar.querySelector('#crm-follow-up-badge');
-    
+
     if (badge) {
       badge.style.display = dueTodayCount > 0 ? 'inline-block' : 'none';
     }
@@ -881,11 +720,11 @@ class SidebarInjector {
     const loginForm = this.sidebar.querySelector('#crm-login-form');
     const registerForm = this.sidebar.querySelector('#crm-register-form');
     const tabButtons = this.sidebar.querySelectorAll('.crm-tab-btn');
-    
+
     tabButtons.forEach(btn => {
       btn.classList.toggle('active', btn.dataset.tab === tab);
     });
-    
+
     if (tab === 'login') {
       loginForm.style.display = 'block';
       registerForm.style.display = 'none';
@@ -902,7 +741,7 @@ class SidebarInjector {
     const email = this.sidebar.querySelector('#crm-login-email')?.value.trim();
     const password = this.sidebar.querySelector('#crm-login-password')?.value;
     const errorEl = this.sidebar.querySelector('#crm-auth-error');
-    
+
     if (!email || !password) {
       this.showError(errorEl, 'Please enter email and password');
       return;
@@ -925,10 +764,10 @@ class SidebarInjector {
           token: data.token,
           userEmail: data.user.email
         });
-        
+
         this.showError(errorEl, ''); // Clear error
         this.showMainUI(data.user.email);
-        
+
         // Clear form
         this.sidebar.querySelector('#crm-login-email').value = '';
         this.sidebar.querySelector('#crm-login-password').value = '';
@@ -948,7 +787,7 @@ class SidebarInjector {
     const email = this.sidebar.querySelector('#crm-register-email')?.value.trim();
     const password = this.sidebar.querySelector('#crm-register-password')?.value;
     const errorEl = this.sidebar.querySelector('#crm-register-error');
-    
+
     if (!email || !password) {
       this.showError(errorEl, 'Please enter email and password');
       return;
@@ -976,10 +815,10 @@ class SidebarInjector {
           token: data.token,
           userEmail: data.user.email
         });
-        
+
         this.showError(errorEl, ''); // Clear error
         this.showMainUI(data.user.email);
-        
+
         // Clear form
         this.sidebar.querySelector('#crm-register-email').value = '';
         this.sidebar.querySelector('#crm-register-password').value = '';
@@ -1090,7 +929,7 @@ class SidebarInjector {
     if (this.activeTab === 'chat') {
       await this.loadChatData(chatData.chatId);
     }
-    
+
     // Refresh Overview if on Overview tab (counts might have changed)
     if (this.activeTab === 'overview') {
       this.loadOverviewData();
@@ -1195,13 +1034,13 @@ class SidebarInjector {
 
       const phoneNumber = DOMUtils.extractPhoneNumber(normalizedChatId);
       let chatName = DOMUtils.getChatName();
-      
+
       // Filter out placeholder text
       if (chatName && (
-          chatName.toLowerCase().includes('click here') ||
-          chatName.toLowerCase().includes('contact info') ||
-          chatName.toLowerCase().includes('tap here')
-        )) {
+        chatName.toLowerCase().includes('click here') ||
+        chatName.toLowerCase().includes('contact info') ||
+        chatName.toLowerCase().includes('tap here')
+      )) {
         chatName = null; // Don't save placeholder text
       }
 
@@ -1228,7 +1067,7 @@ class SidebarInjector {
       } else {
         const errorData = await response.json().catch(() => ({ error: 'Unknown error' }));
         console.error('Failed to create chat:', response.status, errorData);
-        
+
         // If creation failed but chat might exist, try to fetch it
         if (response.status === 400 || response.status === 409) {
           console.log('Chat might already exist, fetching...');
@@ -1253,7 +1092,7 @@ class SidebarInjector {
         name = `+91 ${chat.phone_number.substring(chat.phone_number.length - 9)}`;
       } else if (chat.chat_name && chat.phone_number) {
         // Show name with phone
-        const shortPhone = chat.phone_number.length > 9 
+        const shortPhone = chat.phone_number.length > 9
           ? `+91 ${chat.phone_number.substring(chat.phone_number.length - 9)}`
           : chat.phone_number;
         name = `${chat.chat_name} (${shortPhone})`;
@@ -1290,7 +1129,7 @@ class SidebarInjector {
     const setBtn = this.sidebar.querySelector('#crm-set-reminder-btn');
 
     const activeReminder = reminders.find(r => !r.notified);
-    
+
     if (activeReminder && displayEl && textEl) {
       const reminderDate = new Date(activeReminder.reminderTime);
       const formatted = reminderDate.toLocaleString('en-US', {
@@ -1364,7 +1203,7 @@ class SidebarInjector {
         if (this.activeTab === 'overview') {
           this.loadOverviewData();
         }
-        
+
         // Reload chat data to update UI
         await this.loadChatData(chatId);
       }
@@ -1472,7 +1311,7 @@ class SidebarInjector {
 
     const date = dateInput?.value;
     const time = timeInput?.value;
-    
+
     if (!date || !time) {
       alert('Please select both date and time');
       return;
@@ -1623,11 +1462,11 @@ class SidebarInjector {
     if (input) {
       // Set text content
       input.textContent = message;
-      
+
       // Trigger input event
       const event = new Event('input', { bubbles: true });
       input.dispatchEvent(event);
-      
+
       // Focus input
       input.focus();
     }

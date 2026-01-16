@@ -1,0 +1,630 @@
+/* WhatsApp CRM Sidebar Styles - Phase 1 Redesign */
+
+.whatsapp-crm-sidebar {
+  position: fixed;
+  top: 0;
+  right: -360px;
+  width: 340px;
+  height: 100vh;
+  background: #ffffff;
+  box-shadow: -2px 0 10px rgba(0, 0, 0, 0.1);
+  z-index: 10000;
+  transition: right 0.3s ease;
+  overflow-y: auto;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  display: flex;
+  flex-direction: column;
+}
+
+.whatsapp-crm-sidebar.visible {
+  right: 0;
+}
+
+/* Header */
+.crm-sidebar-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px 16px;
+  border-bottom: 1px solid #e0e0e0;
+  background: #f5f5f5;
+  flex-shrink: 0;
+}
+
+.crm-sidebar-header h3 {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 600;
+  color: #333;
+}
+
+.crm-close-btn {
+  background: none;
+  border: none;
+  font-size: 24px;
+  cursor: pointer;
+  color: #666;
+  padding: 0;
+  width: 28px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 4px;
+}
+
+.crm-close-btn:hover {
+  background: #e0e0e0;
+  color: #000;
+}
+
+/* User Bar */
+.crm-user-bar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px 16px;
+  border-bottom: 1px solid #e0e0e0;
+  background: #fafafa;
+  font-size: 11px;
+  flex-shrink: 0;
+}
+
+.crm-user-email {
+  color: #666;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  flex: 1;
+}
+
+.crm-logout-btn {
+  background: #dc3545;
+  color: #fff;
+  border: none;
+  border-radius: 4px;
+  padding: 4px 8px;
+  font-size: 11px;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+
+.crm-logout-btn:hover {
+  background: #c82333;
+}
+
+/* Tabs Container */
+.crm-tabs-container {
+  display: flex;
+  border-bottom: 1px solid #e0e0e0;
+  background: #fff;
+  flex-shrink: 0;
+}
+
+.crm-main-tab {
+  flex: 1;
+  padding: 12px 16px;
+  border: none;
+  background: none;
+  border-bottom: 2px solid transparent;
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 500;
+  color: #666;
+  transition: all 0.2s;
+  position: relative;
+}
+
+.crm-main-tab:hover {
+  background: #f5f5f5;
+  color: #333;
+}
+
+.crm-main-tab.active {
+  color: #25d366;
+  border-bottom-color: #25d366;
+  font-weight: 600;
+}
+
+.crm-tab-badge {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  background: #dc3545;
+  color: #fff;
+  border-radius: 10px;
+  width: 8px;
+  height: 8px;
+  display: inline-block;
+}
+
+/* Tab Content */
+.crm-tab-content {
+  display: none;
+  flex: 1;
+  overflow-y: auto;
+  padding: 16px;
+}
+
+.crm-tab-content.active {
+  display: block;
+}
+
+/* Overview Tab - Summary Counters (Compact) */
+.crm-summary-compact {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 16px;
+}
+
+.crm-summary-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+}
+
+.crm-summary-icon {
+  font-size: 14px;
+  width: 20px;
+  text-align: center;
+}
+
+.crm-summary-label {
+  flex: 1;
+  color: #333;
+}
+
+.crm-summary-value {
+  font-weight: 600;
+  color: #333;
+}
+
+.crm-summary-badge {
+  color: #dc3545;
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.crm-divider {
+  height: 1px;
+  background: #e0e0e0;
+  margin: 16px 0;
+}
+
+/* Work Queue */
+.crm-work-queue-section {
+  margin-bottom: 20px;
+}
+
+.crm-work-queue-title {
+  font-size: 12px;
+  font-weight: 600;
+  color: #333;
+  margin: 0 0 10px 0;
+}
+
+.crm-work-queue-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.crm-work-queue-item-compact {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 0;
+  cursor: pointer;
+  font-size: 13px;
+  color: #333;
+  transition: color 0.2s;
+}
+
+.crm-work-queue-item-compact:hover {
+  color: #25d366;
+}
+
+.crm-work-queue-bullet {
+  color: #999;
+  font-size: 16px;
+  line-height: 1;
+}
+
+.crm-work-queue-item-name {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.crm-work-queue-time {
+  color: #999;
+  font-size: 12px;
+}
+
+/* Chat Tab */
+.crm-chat-header-compact {
+  margin-bottom: 12px;
+}
+
+.crm-chat-info {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+}
+
+.crm-chat-label {
+  color: #666;
+}
+
+.crm-chat-name {
+  font-weight: 500;
+  color: #333;
+}
+
+.crm-section-compact {
+  margin-bottom: 16px;
+}
+
+.crm-section-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 8px;
+  font-size: 13px;
+}
+
+.crm-section-icon {
+  font-size: 14px;
+}
+
+.crm-section-label {
+  font-weight: 500;
+  color: #333;
+}
+
+.crm-select-compact {
+  width: 100%;
+  padding: 6px 10px;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  font-size: 13px;
+  background: #fff;
+  cursor: pointer;
+}
+
+.crm-select-compact:focus {
+  outline: none;
+  border-color: #25d366;
+}
+
+.crm-notes-input-compact {
+  width: 100%;
+  padding: 8px 10px;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  font-size: 13px;
+  font-family: inherit;
+  resize: vertical;
+  box-sizing: border-box;
+}
+
+.crm-notes-input-compact:focus {
+  outline: none;
+  border-color: #25d366;
+}
+
+.crm-reminder-btn-compact {
+  width: 100%;
+  padding: 8px;
+  background: #25d366;
+  color: #fff;
+  border: none;
+  border-radius: 4px;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+
+.crm-reminder-btn-compact:hover {
+  background: #20ba5a;
+}
+
+.crm-reminder-display-compact {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px 10px;
+  background: #f0f9ff;
+  border: 1px solid #25d366;
+  border-radius: 4px;
+  font-size: 12px;
+  color: #333;
+}
+
+.crm-reminder-remove {
+  background: none;
+  border: none;
+  font-size: 16px;
+  color: #666;
+  cursor: pointer;
+  padding: 0;
+  width: 18px;
+  height: 18px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.crm-reminder-remove:hover {
+  color: #dc3545;
+}
+
+/* Quick Replies - Horizontal */
+.crm-quick-replies-horizontal {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.crm-quick-reply-btn {
+  padding: 6px 12px;
+  background: #f0f0f0;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  font-size: 12px;
+  cursor: pointer;
+  transition: all 0.2s;
+  white-space: nowrap;
+}
+
+.crm-quick-reply-btn:hover {
+  background: #25d366;
+  color: #fff;
+  border-color: #25d366;
+}
+
+.crm-add-quick-reply-btn {
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  margin-left: auto;
+  background: #f0f0f0;
+  border: 1px solid #ddd;
+  border-radius: 3px;
+  font-size: 14px;
+  line-height: 1;
+  cursor: pointer;
+  color: #666;
+  transition: all 0.2s;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.crm-add-quick-reply-btn:hover {
+  background: #25d366;
+  color: #fff;
+  border-color: #25d366;
+}
+
+/* Empty States */
+.crm-empty-state {
+  text-align: center;
+  color: #999;
+  font-size: 12px;
+  padding: 40px 20px;
+}
+
+.crm-empty-state-small {
+  text-align: center;
+  color: #999;
+  font-size: 11px;
+  padding: 20px;
+}
+
+/* Modal */
+.crm-modal {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 10001;
+}
+
+.crm-modal-content {
+  background: #fff;
+  border-radius: 8px;
+  width: 90%;
+  max-width: 400px;
+  max-height: 90vh;
+  overflow-y: auto;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.2);
+}
+
+.crm-modal-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 16px;
+  border-bottom: 1px solid #e0e0e0;
+}
+
+.crm-modal-header h4 {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.crm-modal-close {
+  background: none;
+  border: none;
+  font-size: 24px;
+  color: #666;
+  cursor: pointer;
+  padding: 0;
+  width: 28px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 4px;
+}
+
+.crm-modal-close:hover {
+  background: #f0f0f0;
+}
+
+.crm-modal-body {
+  padding: 16px;
+}
+
+.crm-form-group {
+  margin-bottom: 16px;
+}
+
+.crm-form-group label {
+  display: block;
+  font-size: 12px;
+  font-weight: 500;
+  color: #333;
+  margin-bottom: 6px;
+}
+
+.crm-input {
+  width: 100%;
+  padding: 8px 12px;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  font-size: 13px;
+  box-sizing: border-box;
+}
+
+.crm-input:focus {
+  outline: none;
+  border-color: #25d366;
+}
+
+.crm-modal-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  padding: 16px;
+  border-top: 1px solid #e0e0e0;
+}
+
+.crm-btn-primary {
+  padding: 8px 16px;
+  background: #25d366;
+  color: #fff;
+  border: none;
+  border-radius: 4px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+
+.crm-btn-primary:hover {
+  background: #20ba5a;
+}
+
+.crm-btn-secondary {
+  padding: 8px 16px;
+  background: #f0f0f0;
+  color: #333;
+  border: none;
+  border-radius: 4px;
+  font-size: 13px;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+
+.crm-btn-secondary:hover {
+  background: #e0e0e0;
+}
+
+/* Authentication Styles */
+.crm-auth-tabs {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 16px;
+}
+
+.crm-tab-btn {
+  flex: 1;
+  padding: 8px;
+  border: 1px solid #ddd;
+  background: #fff;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 13px;
+  transition: all 0.2s;
+}
+
+.crm-tab-btn:hover {
+  background: #f0f0f0;
+}
+
+.crm-tab-btn.active {
+  background: #25d366;
+  color: #fff;
+  border-color: #25d366;
+}
+
+.crm-auth-form {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.crm-error {
+  padding: 8px;
+  background: #fee;
+  color: #c33;
+  border-radius: 4px;
+  font-size: 12px;
+  margin-top: 8px;
+}
+
+.crm-sidebar-content {
+  flex: 1;
+  overflow-y: auto;
+}
+
+/* Toggle Button */
+.whatsapp-crm-toggle {
+  padding: 8px 16px;
+  background: #25d366;
+  color: #fff;
+  border: none;
+  border-radius: 4px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  z-index: 9999;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+  transition: background 0.2s;
+}
+
+.whatsapp-crm-toggle:hover {
+  background: #20ba5a;
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+  .whatsapp-crm-sidebar {
+    width: 100%;
+    right: -100%;
+  }
+}

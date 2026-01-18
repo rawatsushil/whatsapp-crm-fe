@@ -13,6 +13,7 @@ class SidebarInjector {
       followUps: [],
       newLeads: []
     };
+    this.storeBridgeReady = false;
   }
 
   /**
@@ -35,6 +36,35 @@ class SidebarInjector {
     window.addEventListener('whatsapp-crm:chat-changed', (e) => {
       this.onChatChanged(e.detail);
     });
+
+    // Inject page-context script and set up bridge
+    this.setupBridge();
+  }
+
+  /**
+   * Set up the page-context bridge for non-refreshing chat opening
+   */
+  setupBridge() {
+    // Listen for bridge ready message
+    window.addEventListener('message', (event) => {
+      if (event.source !== window) return;
+      const { type } = event.data || {};
+      if (type === 'WA_CRM_STORE_READY') {
+        console.log('WhatsApp CRM: Bridge is ready');
+        this.storeBridgeReady = true;
+      }
+    });
+
+    // Inject the page-context script
+    try {
+      const script = document.createElement('script');
+      script.src = chrome.runtime.getURL('content/page-script.js');
+      script.onload = () => script.remove();
+      (document.head || document.documentElement).appendChild(script);
+      console.log('WhatsApp CRM: Page script injected');
+    } catch (e) {
+      console.error('WhatsApp CRM: Failed to inject page script', e);
+    }
   }
 
   /**
@@ -626,8 +656,20 @@ class SidebarInjector {
 
     const phoneNumber = DOMUtils.extractPhoneNumber(normalizedChatId);
     if (!phoneNumber) return;
-    const whatsappUrl = `https://web.whatsapp.com/send?phone=${phoneNumber}`;
-    window.location.href = whatsappUrl;
+
+    // Try to open via bridge first (no refresh)
+    if (this.storeBridgeReady) {
+      console.log('WhatsApp CRM: Opening chat via bridge:', normalizedChatId);
+      window.postMessage({
+        type: 'WA_CRM_OPEN_CHAT',
+        chatId: normalizedChatId
+      }, '*');
+    } else {
+      // Fallback: use legacy method (full refresh)
+      console.log('WhatsApp CRM: Bridge not ready, using fallback');
+      const whatsappUrl = `https://web.whatsapp.com/send?phone=${phoneNumber}`;
+      window.location.href = whatsappUrl;
+    }
   }
 
 

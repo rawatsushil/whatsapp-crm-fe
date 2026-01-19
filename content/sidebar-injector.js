@@ -48,10 +48,25 @@ class SidebarInjector {
     // Listen for bridge ready message
     window.addEventListener('message', (event) => {
       if (event.source !== window) return;
-      const { type } = event.data || {};
+      const { type, myNumber } = event.data || {};
+      
       if (type === 'WA_CRM_STORE_READY') {
-        console.log('WhatsApp CRM: Bridge is ready');
+        console.log('WhatsApp CRM: Bridge is ready, myNumber:', myNumber);
         this.storeBridgeReady = true;
+        
+        // Store detected number if available
+        if (myNumber) {
+          this.detectedNumber = myNumber;
+          this.checkOnboardingNeeded();
+        }
+      }
+      
+      if (type === 'WA_CRM_MY_NUMBER') {
+        console.log('WhatsApp CRM: Received my number:', myNumber);
+        if (myNumber) {
+          this.detectedNumber = myNumber;
+          this.checkOnboardingNeeded();
+        }
       }
     });
 
@@ -64,6 +79,133 @@ class SidebarInjector {
       console.log('WhatsApp CRM: Page script injected');
     } catch (e) {
       console.error('WhatsApp CRM: Failed to inject page script', e);
+    }
+    
+    // Also try DOM-based detection after a delay
+    setTimeout(() => {
+      if (!this.detectedNumber) {
+        const domNumber = DOMUtils.detectOwnNumber();
+        if (domNumber) {
+          console.log('WhatsApp CRM: Detected number from DOM:', domNumber);
+          this.detectedNumber = domNumber;
+          this.checkOnboardingNeeded();
+        }
+      }
+    }, 3000);
+  }
+
+  /**
+   * Check if onboarding is needed and show it
+   */
+  async checkOnboardingNeeded() {
+    const { whatsappNumber } = await chrome.storage.local.get(['whatsappNumber']);
+    
+    if (!whatsappNumber && this.detectedNumber) {
+      // Show onboarding with detected number
+      this.showOnboarding(this.detectedNumber);
+    }
+  }
+
+  /**
+   * Show onboarding modal with detected number
+   */
+  showOnboarding(number) {
+    const onboardingSection = this.sidebar.querySelector('#crm-onboarding-section');
+    const authSection = this.sidebar.querySelector('#crm-auth-section');
+    const mainContent = this.sidebar.querySelector('#crm-main-content');
+    const detectedNumberEl = this.sidebar.querySelector('#crm-detected-number');
+    
+    // Format number for display
+    const formattedNumber = this.formatPhoneNumber(number);
+    if (detectedNumberEl) {
+      detectedNumberEl.textContent = formattedNumber;
+    }
+    
+    // Show onboarding, hide others
+    if (onboardingSection) onboardingSection.style.display = 'block';
+    if (authSection) authSection.style.display = 'none';
+    if (mainContent) mainContent.style.display = 'none';
+    
+    // Auto-show sidebar if not visible
+    if (!this.isVisible) {
+      this.show();
+    }
+  }
+
+  /**
+   * Format phone number for display
+   */
+  formatPhoneNumber(number) {
+    if (!number) return '';
+    // Remove any non-digit characters
+    const digits = number.replace(/\D/g, '');
+    
+    // Format as +XX XXX XXX XXXX (for Indian numbers starting with 91)
+    if (digits.startsWith('91') && digits.length >= 12) {
+      return `+91 ${digits.slice(2, 5)} ${digits.slice(5, 8)} ${digits.slice(8)}`;
+    }
+    
+    // Generic format
+    if (digits.length >= 10) {
+      return `+${digits.slice(0, 2)} ${digits.slice(2, 5)} ${digits.slice(5, 8)} ${digits.slice(8)}`;
+    }
+    
+    return `+${digits}`;
+  }
+
+  /**
+   * Confirm the detected WhatsApp number and auto-authenticate
+   */
+  async confirmNumber(number) {
+    try {
+      // Save the number to storage
+      await chrome.storage.local.set({ whatsappNumber: number });
+      console.log('WhatsApp CRM: Number confirmed and saved:', number);
+      
+      // Auto-register/login with this WhatsApp number
+      await this.autoAuthenticate(number);
+    } catch (error) {
+      console.error('Error saving number:', error);
+      const errorEl = this.sidebar.querySelector('#crm-onboarding-error');
+      if (errorEl) {
+        errorEl.textContent = 'Failed to save. Please try again.';
+        errorEl.style.display = 'block';
+      }
+    }
+  }
+
+  /**
+   * Auto-authenticate user with WhatsApp number
+   */
+  async autoAuthenticate(whatsappNumber) {
+    try {
+      // Try to register/login with WhatsApp number
+      const response = await fetch(`${this.apiBaseUrl}/auth/whatsapp`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ whatsappNumber })
+      });
+
+      const data = await response.json();
+
+      if (response.ok) {
+        // Store token
+        await chrome.storage.local.set({ token: data.token });
+        console.log('WhatsApp CRM: Auto-authenticated successfully');
+        
+        // Show main UI
+        this.showMainUI();
+      } else {
+        console.error('Auto-authentication failed:', data.error);
+        // Still show main UI, will work in offline mode
+        this.showMainUI();
+      }
+    } catch (error) {
+      console.error('Error during auto-authentication:', error);
+      // Still show main UI even if backend is down
+      this.showMainUI();
     }
   }
 
@@ -111,53 +253,24 @@ class SidebarInjector {
         <button class="crm-close-btn" id="crm-close-btn">×</button>
       </div>
       
-      <!-- Authentication Section -->
-      <div id="crm-auth-section" class="crm-sidebar-content" style="display: none;">
-        <div class="crm-section">
-          <h4>Login / Register</h4>
-          <div id="crm-auth-tabs" class="crm-auth-tabs">
-            <button class="crm-tab-btn active" data-tab="login">Login</button>
-            <button class="crm-tab-btn" data-tab="register">Register</button>
+      <!-- Onboarding Section (Number Detection) -->
+      <div id="crm-onboarding-section" class="crm-sidebar-content" style="display: none;">
+        <div class="crm-onboarding">
+          <div class="crm-onboarding-icon">📱</div>
+          <h4 class="crm-onboarding-title">Welcome to WhatsApp CRM!</h4>
+          <p class="crm-onboarding-text">We detected your WhatsApp number:</p>
+          <div class="crm-onboarding-number" id="crm-detected-number">+91 XXX XXX XXXX</div>
+          <p class="crm-onboarding-subtext">This number will be used to save your CRM data. Different WhatsApp accounts will have separate data.</p>
+          <button class="crm-btn-primary crm-onboarding-confirm" id="crm-confirm-number">Yes, use this number</button>
+          <button class="crm-btn-secondary crm-onboarding-manual" id="crm-manual-number">Enter manually</button>
+          <div id="crm-manual-number-form" class="crm-manual-form" style="display: none;">
+            <input type="tel" id="crm-manual-number-input" class="crm-input" placeholder="Enter your WhatsApp number (e.g., 919876543210)" />
+            <button class="crm-btn-primary" id="crm-save-manual-number">Save</button>
           </div>
-          
-          <!-- Login Form -->
-          <div id="crm-login-form" class="crm-auth-form">
-            <input 
-              type="email" 
-              id="crm-login-email" 
-              class="crm-input" 
-              placeholder="Email"
-            />
-            <input 
-              type="password" 
-              id="crm-login-password" 
-              class="crm-input" 
-              placeholder="Password"
-            />
-            <button class="crm-save-btn" id="crm-login-btn">Login</button>
-            <div id="crm-auth-error" class="crm-error" style="display: none;"></div>
-          </div>
-          
-          <!-- Register Form -->
-          <div id="crm-register-form" class="crm-auth-form" style="display: none;">
-            <input 
-              type="email" 
-              id="crm-register-email" 
-              class="crm-input" 
-              placeholder="Email"
-            />
-            <input 
-              type="password" 
-              id="crm-register-password" 
-              class="crm-input" 
-              placeholder="Password"
-            />
-            <button class="crm-save-btn" id="crm-register-btn">Register</button>
-            <div id="crm-register-error" class="crm-error" style="display: none;"></div>
-          </div>
+          <div id="crm-onboarding-error" class="crm-error" style="display: none;"></div>
         </div>
       </div>
-      
+
       <!-- Main CRM Content -->
       <div id="crm-main-content" class="crm-sidebar-content" style="display: none;">
         <!-- Tabs -->
@@ -169,56 +282,60 @@ class SidebarInjector {
           <button class="crm-main-tab" data-tab="chat" id="crm-tab-chat">Chat</button>
         </div>
 
-        <!-- User Info Bar -->
-        <div class="crm-user-bar">
-          <span id="crm-user-email" class="crm-user-email"></span>
-          <button class="crm-logout-btn" id="crm-logout-btn">Logout</button>
-        </div>
+        
 
         <!-- Overview Tab -->
         <div id="crm-tab-content-overview" class="crm-tab-content active">
-          <!-- Summary Counters -->
-          <div class="crm-summary-compact">
-            <div class="crm-summary-item">
-              <span class="crm-summary-icon">🟢</span>
-              <span class="crm-summary-label">New Leads</span>
-              <span class="crm-summary-value" id="crm-count-new-lead">0</span>
+          <!-- Accordion: New Leads (expanded by default) -->
+          <div class="crm-accordion expanded" data-status="new_lead">
+            <div class="crm-accordion-header" data-toggle="new_lead">
+              <span class="crm-accordion-icon">🟢</span>
+              <span class="crm-accordion-label">New Leads</span>
+              <span class="crm-accordion-count" id="crm-count-new-lead">0</span>
+              <span class="crm-accordion-arrow">▼</span>
             </div>
-            <div class="crm-summary-item">
-              <span class="crm-summary-icon">🟡</span>
-              <span class="crm-summary-label">Follow-ups</span>
-              <span class="crm-summary-value" id="crm-count-follow-up">0</span>
-              <span class="crm-summary-badge" id="crm-follow-up-badge" style="display: none;">(2 due)</span>
-            </div>
-            <div class="crm-summary-item">
-              <span class="crm-summary-icon">🔵</span>
-              <span class="crm-summary-label">Paid</span>
-              <span class="crm-summary-value" id="crm-count-paid">0</span>
-            </div>
-            <div class="crm-summary-item">
-              <span class="crm-summary-icon">⚫</span>
-              <span class="crm-summary-label">Closed</span>
-              <span class="crm-summary-value" id="crm-count-closed">0</span>
+            <div class="crm-accordion-content" id="crm-list-new-lead">
+              <div class="crm-empty-state">No new leads</div>
             </div>
           </div>
 
-          <div class="crm-divider"></div>
-
-          <!-- Work Queue: Follow-ups -->
-          <div class="crm-work-queue-section">
-            <h4 class="crm-work-queue-title">FOLLOW-UPS (priority)</h4>
-            <div id="crm-follow-ups-list" class="crm-work-queue-list">
+          <!-- Accordion: Follow-ups (expanded by default) -->
+          <div class="crm-accordion expanded" data-status="follow_up">
+            <div class="crm-accordion-header" data-toggle="follow_up">
+              <span class="crm-accordion-icon">🟡</span>
+              <span class="crm-accordion-label">Follow-ups</span>
+              <span class="crm-accordion-badge" id="crm-follow-up-badge" style="display: none;">(0 due)</span>
+              <span class="crm-accordion-count" id="crm-count-follow-up">0</span>
+              <span class="crm-accordion-arrow">▼</span>
+            </div>
+            <div class="crm-accordion-content" id="crm-list-follow-up">
               <div class="crm-empty-state">No follow-ups</div>
             </div>
           </div>
 
-          <div class="crm-divider"></div>
+          <!-- Accordion: Paid -->
+          <div class="crm-accordion" data-status="paid">
+            <div class="crm-accordion-header" data-toggle="paid">
+              <span class="crm-accordion-icon">🔵</span>
+              <span class="crm-accordion-label">Paid</span>
+              <span class="crm-accordion-count" id="crm-count-paid">0</span>
+              <span class="crm-accordion-arrow">▼</span>
+            </div>
+            <div class="crm-accordion-content" id="crm-list-paid">
+              <div class="crm-empty-state">No paid chats</div>
+            </div>
+          </div>
 
-          <!-- Work Queue: New Leads -->
-          <div class="crm-work-queue-section">
-            <h4 class="crm-work-queue-title">NEW LEADS</h4>
-            <div id="crm-new-leads-list" class="crm-work-queue-list">
-              <div class="crm-empty-state">No new leads</div>
+          <!-- Accordion: Closed -->
+          <div class="crm-accordion" data-status="closed">
+            <div class="crm-accordion-header" data-toggle="closed">
+              <span class="crm-accordion-icon">⚫</span>
+              <span class="crm-accordion-label">Closed</span>
+              <span class="crm-accordion-count" id="crm-count-closed">0</span>
+              <span class="crm-accordion-arrow">▼</span>
+            </div>
+            <div class="crm-accordion-content" id="crm-list-closed">
+              <div class="crm-empty-state">No closed chats</div>
             </div>
           </div>
         </div>
@@ -240,13 +357,14 @@ class SidebarInjector {
             <div class="crm-section-header">
               <span class="crm-section-icon">📊</span>
               <span class="crm-section-label">Status:</span>
+              
             </div>
             <select id="crm-status-selector" class="crm-select-compact">
               <option value="">No status</option>
-              <option value="new_lead">New Lead</option>
-              <option value="follow_up">Follow-up</option>
-              <option value="paid">Paid</option>
-              <option value="closed">Closed</option>
+              <option value="new_lead">🟢 New Lead</option>
+              <option value="follow_up">🟡 Follow-up</option>
+              <option value="paid">🔵 Paid</option>
+              <option value="closed">⚫ Closed</option>
             </select>
           </div>
 
@@ -324,31 +442,45 @@ class SidebarInjector {
       closeBtn.addEventListener('click', () => this.hide());
     }
 
-    // Auth tab buttons
-    const authTabs = this.sidebar.querySelectorAll('.crm-tab-btn');
-    authTabs.forEach(btn => {
-      btn.addEventListener('click', (e) => {
-        const tab = e.target.dataset.tab;
-        this.switchAuthTab(tab);
+    // Onboarding: Confirm number button
+    const confirmNumberBtn = this.sidebar.querySelector('#crm-confirm-number');
+    if (confirmNumberBtn) {
+      confirmNumberBtn.addEventListener('click', () => {
+        if (this.detectedNumber) {
+          this.confirmNumber(this.detectedNumber);
+        }
       });
-    });
-
-    // Login button
-    const loginBtn = this.sidebar.querySelector('#crm-login-btn');
-    if (loginBtn) {
-      loginBtn.addEventListener('click', () => this.login());
     }
 
-    // Register button
-    const registerBtn = this.sidebar.querySelector('#crm-register-btn');
-    if (registerBtn) {
-      registerBtn.addEventListener('click', () => this.register());
+    // Onboarding: Manual number button
+    const manualNumberBtn = this.sidebar.querySelector('#crm-manual-number');
+    if (manualNumberBtn) {
+      manualNumberBtn.addEventListener('click', () => {
+        const manualForm = this.sidebar.querySelector('#crm-manual-number-form');
+        if (manualForm) {
+          manualForm.style.display = manualForm.style.display === 'none' ? 'block' : 'none';
+        }
+      });
     }
 
-    // Logout button
-    const logoutBtn = this.sidebar.querySelector('#crm-logout-btn');
-    if (logoutBtn) {
-      logoutBtn.addEventListener('click', () => this.logout());
+    // Onboarding: Save manual number
+    const saveManualBtn = this.sidebar.querySelector('#crm-save-manual-number');
+    if (saveManualBtn) {
+      saveManualBtn.addEventListener('click', () => {
+        const input = this.sidebar.querySelector('#crm-manual-number-input');
+        const errorEl = this.sidebar.querySelector('#crm-onboarding-error');
+        const number = input?.value.replace(/\D/g, '');
+        
+        if (!number || number.length < 10) {
+          if (errorEl) {
+            errorEl.textContent = 'Please enter a valid phone number (at least 10 digits)';
+            errorEl.style.display = 'block';
+          }
+          return;
+        }
+        
+        this.confirmNumber(number);
+      });
     }
 
     // Main tabs (Overview/Chat)
@@ -404,6 +536,15 @@ class SidebarInjector {
       reminderRemove.addEventListener('click', () => this.removeReminder());
     }
 
+    // Accordion toggle handlers
+    const accordionHeaders = this.sidebar.querySelectorAll('.crm-accordion-header');
+    accordionHeaders.forEach(header => {
+      header.addEventListener('click', () => {
+        const accordion = header.closest('.crm-accordion');
+        accordion.classList.toggle('expanded');
+      });
+    });
+
     // Check authentication status on init
     this.checkAuthStatus();
 
@@ -412,44 +553,49 @@ class SidebarInjector {
   }
 
   /**
-   * Check authentication status and show appropriate UI
+   * Check if user has completed onboarding and show appropriate UI
    */
   async checkAuthStatus() {
-    const { token, userEmail } = await chrome.storage.local.get(['token', 'userEmail']);
+    const { whatsappNumber, token } = await chrome.storage.local.get(['whatsappNumber', 'token']);
 
-    if (token) {
-      this.showMainUI(userEmail);
-    } else {
-      this.showAuthUI();
+    // Check if onboarding is needed (no WhatsApp number saved)
+    if (!whatsappNumber) {
+      // Try to detect number if not already detected
+      if (!this.detectedNumber) {
+        window.postMessage({ type: 'WA_CRM_GET_MY_NUMBER' }, '*');
+      } else {
+        this.showOnboarding(this.detectedNumber);
+      }
+      return;
     }
-  }
 
-  /**
-   * Show authentication UI
-   */
-  showAuthUI() {
-    const authSection = this.sidebar.querySelector('#crm-auth-section');
-    const mainContent = this.sidebar.querySelector('#crm-main-content');
-
-    if (authSection) authSection.style.display = 'block';
-    if (mainContent) mainContent.style.display = 'none';
+    // WhatsApp number is confirmed
+    // Auto-authenticate if no token yet
+    if (!token) {
+      await this.autoAuthenticate(whatsappNumber);
+    } else {
+      this.showMainUI();
+    }
   }
 
   /**
    * Show main CRM UI
    */
-  showMainUI(userEmail) {
-    const authSection = this.sidebar.querySelector('#crm-auth-section');
+  async showMainUI() {
+    const onboardingSection = this.sidebar.querySelector('#crm-onboarding-section');
     const mainContent = this.sidebar.querySelector('#crm-main-content');
-    const userEmailEl = this.sidebar.querySelector('#crm-user-email');
+    const userWhatsappEl = this.sidebar.querySelector('#crm-user-whatsapp');
 
-    if (authSection) authSection.style.display = 'none';
+    if (onboardingSection) onboardingSection.style.display = 'none';
     if (mainContent) mainContent.style.display = 'block';
-    if (userEmailEl && userEmail) {
-      userEmailEl.textContent = userEmail;
+    
+    // Display WhatsApp number
+    const { whatsappNumber } = await chrome.storage.local.get(['whatsappNumber']);
+    if (userWhatsappEl && whatsappNumber) {
+      userWhatsappEl.textContent = this.formatPhoneNumber(whatsappNumber);
     }
 
-    // Load Overview data when authenticated
+    // Load Overview data
     if (this.activeTab === 'overview') {
       this.loadOverviewData();
     }
@@ -509,12 +655,24 @@ class SidebarInjector {
   }
 
   /**
-   * Load Overview tab data (work queue)
+   * Load Overview tab data (all accordions)
    */
   async loadOverviewData() {
     try {
-      const { token } = await chrome.storage.local.get(['token']);
-      if (!token) return;
+      let { token, whatsappNumber } = await chrome.storage.local.get(['token', 'whatsappNumber']);
+      
+      // If no token but have WhatsApp number, try to authenticate
+      if (!token && whatsappNumber) {
+        console.log('No token for overview, attempting auto-authentication...');
+        await this.autoAuthenticate(whatsappNumber);
+        const storage = await chrome.storage.local.get(['token']);
+        token = storage.token;
+      }
+      
+      if (!token) {
+        console.warn('Cannot load overview - not authenticated');
+        return;
+      }
 
       // Fetch all chats with tags
       const [newLeads, followUps, paid, closed] = await Promise.all([
@@ -532,9 +690,11 @@ class SidebarInjector {
         closed: closed.length
       });
 
-      // Update work queue lists
-      this.updateWorkQueue('followUps', followUps);
-      this.updateWorkQueue('newLeads', newLeads);
+      // Update accordion lists
+      this.updateAccordionList('new_lead', newLeads);
+      this.updateAccordionList('follow_up', followUps);
+      this.updateAccordionList('paid', paid);
+      this.updateAccordionList('closed', closed);
 
       // Check for due reminders
       this.checkDueReminders(followUps);
@@ -586,14 +746,21 @@ class SidebarInjector {
   }
 
   /**
-   * Update work queue list
+   * Update accordion list for a status
    */
-  updateWorkQueue(type, chats) {
-    const listEl = this.sidebar.querySelector(`#crm-${type === 'followUps' ? 'follow-ups' : 'new-leads'}-list`);
+  updateAccordionList(status, chats) {
+    const listEl = this.sidebar.querySelector(`#crm-list-${status.replace('_', '-')}`);
     if (!listEl) return;
 
+    const emptyLabels = {
+      new_lead: 'No new leads',
+      follow_up: 'No follow-ups',
+      paid: 'No paid chats',
+      closed: 'No closed chats'
+    };
+
     if (chats.length === 0) {
-      listEl.innerHTML = `<div class="crm-empty-state">No ${type === 'followUps' ? 'follow-ups' : 'new leads'}</div>`;
+      listEl.innerHTML = `<div class="crm-empty-state">${emptyLabels[status] || 'No chats'}</div>`;
       return;
     }
 
@@ -622,24 +789,42 @@ class SidebarInjector {
           const reminderDate = new Date(activeReminder.reminderTime);
           const today = new Date();
           const isToday = reminderDate.toDateString() === today.toDateString();
-          reminderText = isToday ? ' ⏰ Today' : '';
+          reminderText = isToday ? ' ⏰' : '';
         }
       }
 
       return `
-        <div class="crm-work-queue-item-compact" data-chat-id="${chat.whatsapp_id}">
-          <span class="crm-work-queue-bullet">•</span>
-          <span class="crm-work-queue-item-name">${this.escapeHtml(name)}</span>
-          ${reminderText || (timeAgo ? ` <span class="crm-work-queue-time">(${timeAgo})</span>` : '')}
+        <div class="crm-accordion-item" data-chat-id="${chat.whatsapp_id}" data-chat-db-id="${chat.id}">
+          <span class="crm-accordion-item-name">${this.escapeHtml(name)}</span>
+          ${reminderText}
+          <span class="crm-accordion-item-time">${timeAgo}</span>
+          <button class="crm-accordion-item-delete" data-chat-db-id="${chat.id}" title="Remove from list">×</button>
         </div>
       `;
     }).join('');
 
-    // Attach click handlers
-    listEl.querySelectorAll('.crm-work-queue-item-compact').forEach(item => {
-      item.addEventListener('click', () => {
+    // Attach click handlers for opening chats
+    listEl.querySelectorAll('.crm-accordion-item').forEach(item => {
+      item.addEventListener('click', (e) => {
+        // Don't open chat if delete button was clicked
+        if (e.target.classList.contains('crm-accordion-item-delete')) return;
+        e.stopPropagation();
         const chatId = item.dataset.chatId;
         this.openChat(chatId);
+      });
+    });
+
+    // Attach delete handlers
+    listEl.querySelectorAll('.crm-accordion-item-delete').forEach(btn => {
+      btn.addEventListener('click', async (e) => {
+        e.stopPropagation();
+        const chatDbId = btn.dataset.chatDbId;
+        const item = btn.closest('.crm-accordion-item');
+        const chatName = item.querySelector('.crm-accordion-item-name')?.textContent || 'this contact';
+        
+        if (confirm(`Remove "${chatName}" from this list?`)) {
+          await this.deleteChat(chatDbId);
+        }
       });
     });
   }
@@ -669,6 +854,40 @@ class SidebarInjector {
       console.log('WhatsApp CRM: Bridge not ready, using fallback');
       const whatsappUrl = `https://web.whatsapp.com/send?phone=${phoneNumber}`;
       window.location.href = whatsappUrl;
+    }
+  }
+
+  /**
+   * Delete (soft delete) a chat from the CRM
+   * @param {string} chatDbId - Database ID of the chat
+   */
+  async deleteChat(chatDbId) {
+    try {
+      const { token } = await chrome.storage.local.get(['token']);
+      if (!token) {
+        console.warn('Not authenticated');
+        return;
+      }
+
+      const response = await fetch(`${this.apiBaseUrl}/chats/${chatDbId}`, {
+        method: 'DELETE',
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
+      });
+
+      if (response.ok) {
+        console.log('Chat deleted successfully:', chatDbId);
+        // Refresh the overview data to update the lists
+        await this.loadOverviewData();
+      } else {
+        const errorData = await response.json().catch(() => ({ error: 'Unknown error' }));
+        console.error('Failed to delete chat:', response.status, errorData);
+        alert('Failed to remove contact. Please try again.');
+      }
+    } catch (error) {
+      console.error('Error deleting chat:', error);
+      alert('Failed to remove contact. Please try again.');
     }
   }
 
@@ -753,132 +972,6 @@ class SidebarInjector {
     } else if (followUpBadge) {
       followUpBadge.style.display = 'none';
     }
-  }
-
-  /**
-   * Switch between login and register tabs
-   */
-  switchAuthTab(tab) {
-    const loginForm = this.sidebar.querySelector('#crm-login-form');
-    const registerForm = this.sidebar.querySelector('#crm-register-form');
-    const tabButtons = this.sidebar.querySelectorAll('.crm-tab-btn');
-
-    tabButtons.forEach(btn => {
-      btn.classList.toggle('active', btn.dataset.tab === tab);
-    });
-
-    if (tab === 'login') {
-      loginForm.style.display = 'block';
-      registerForm.style.display = 'none';
-    } else {
-      loginForm.style.display = 'none';
-      registerForm.style.display = 'block';
-    }
-  }
-
-  /**
-   * Handle login
-   */
-  async login() {
-    const email = this.sidebar.querySelector('#crm-login-email')?.value.trim();
-    const password = this.sidebar.querySelector('#crm-login-password')?.value;
-    const errorEl = this.sidebar.querySelector('#crm-auth-error');
-
-    if (!email || !password) {
-      this.showError(errorEl, 'Please enter email and password');
-      return;
-    }
-
-    try {
-      const response = await fetch(`${this.apiBaseUrl}/auth/login`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({ email, password })
-      });
-
-      const data = await response.json();
-
-      if (response.ok) {
-        // Store token and user info
-        await chrome.storage.local.set({
-          token: data.token,
-          userEmail: data.user.email
-        });
-
-        this.showError(errorEl, ''); // Clear error
-        this.showMainUI(data.user.email);
-
-        // Clear form
-        this.sidebar.querySelector('#crm-login-email').value = '';
-        this.sidebar.querySelector('#crm-login-password').value = '';
-      } else {
-        this.showError(errorEl, data.error || 'Login failed');
-      }
-    } catch (error) {
-      console.error('Login error:', error);
-      this.showError(errorEl, 'Failed to connect to server. Is the backend running?');
-    }
-  }
-
-  /**
-   * Handle register
-   */
-  async register() {
-    const email = this.sidebar.querySelector('#crm-register-email')?.value.trim();
-    const password = this.sidebar.querySelector('#crm-register-password')?.value;
-    const errorEl = this.sidebar.querySelector('#crm-register-error');
-
-    if (!email || !password) {
-      this.showError(errorEl, 'Please enter email and password');
-      return;
-    }
-
-    if (password.length < 6) {
-      this.showError(errorEl, 'Password must be at least 6 characters');
-      return;
-    }
-
-    try {
-      const response = await fetch(`${this.apiBaseUrl}/auth/register`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({ email, password })
-      });
-
-      const data = await response.json();
-
-      if (response.ok) {
-        // Store token and user info
-        await chrome.storage.local.set({
-          token: data.token,
-          userEmail: data.user.email
-        });
-
-        this.showError(errorEl, ''); // Clear error
-        this.showMainUI(data.user.email);
-
-        // Clear form
-        this.sidebar.querySelector('#crm-register-email').value = '';
-        this.sidebar.querySelector('#crm-register-password').value = '';
-      } else {
-        this.showError(errorEl, data.error || 'Registration failed');
-      }
-    } catch (error) {
-      console.error('Register error:', error);
-      this.showError(errorEl, 'Failed to connect to server. Is the backend running?');
-    }
-  }
-
-  /**
-   * Handle logout
-   */
-  async logout() {
-    await chrome.storage.local.remove(['token', 'userEmail']);
-    this.showAuthUI();
   }
 
   /**
@@ -967,8 +1060,9 @@ class SidebarInjector {
   async onChatChanged(chatData) {
     if (!chatData.chatId) return;
 
-    // If on Chat tab, load chat data
+    // Immediately show chat info from DOM while loading from backend
     if (this.activeTab === 'chat') {
+      this.showChatFromDOM(chatData);
       await this.loadChatData(chatData.chatId);
     }
 
@@ -983,10 +1077,22 @@ class SidebarInjector {
    */
   async loadChatData(chatId) {
     try {
-      // Get auth token from storage
-      const { token } = await chrome.storage.local.get(['token']);
+      // Get auth token and WhatsApp number from storage
+      let { token, whatsappNumber } = await chrome.storage.local.get(['token', 'whatsappNumber']);
+      
+      // If no token but have WhatsApp number, try to authenticate
+      if (!token && whatsappNumber) {
+        console.log('No token found, attempting auto-authentication...');
+        await this.autoAuthenticate(whatsappNumber);
+        // Re-fetch token after auth attempt
+        const storage = await chrome.storage.local.get(['token']);
+        token = storage.token;
+      }
+      
       if (!token) {
-        console.warn('Not authenticated');
+        console.warn('Not authenticated - please complete setup');
+        // Show a message in the UI
+        this.showNotAuthenticatedMessage();
         return;
       }
 
@@ -1012,12 +1118,78 @@ class SidebarInjector {
         console.log('Chat not found, creating new chat:', normalizedChatId);
         await this.createChat(normalizedChatId);
         // Note: createChat will reload the data after creation
+      } else if (response.status === 401) {
+        // Token expired or invalid, try to re-authenticate
+        console.log('Token invalid, re-authenticating...');
+        if (whatsappNumber) {
+          await this.autoAuthenticate(whatsappNumber);
+          // Retry loading chat data
+          await this.loadChatData(chatId);
+        }
       } else {
         const errorText = await response.text().catch(() => 'Unknown error');
         console.error('Error loading chat:', response.status, errorText);
       }
     } catch (error) {
       console.error('Error loading chat data:', error);
+      this.showConnectionError();
+    }
+  }
+
+  /**
+   * Show chat info from DOM immediately (before backend loads)
+   */
+  showChatFromDOM(chatData) {
+    const chatNameEl = this.sidebar.querySelector('#crm-chat-name');
+    if (chatNameEl) {
+      const name = chatData.chatName || DOMUtils.getChatName();
+      const phoneNumber = chatData.phoneNumber || DOMUtils.extractPhoneNumber(chatData.chatId);
+      
+      if (name && phoneNumber) {
+        chatNameEl.textContent = `${name} (${this.formatPhoneNumber(phoneNumber)})`;
+      } else if (name) {
+        chatNameEl.textContent = name;
+      } else if (phoneNumber) {
+        chatNameEl.textContent = this.formatPhoneNumber(phoneNumber);
+      } else {
+        chatNameEl.textContent = 'Loading...';
+      }
+    }
+    
+    // Reset status and notes while loading
+    const statusSelector = this.sidebar.querySelector('#crm-status-selector');
+    if (statusSelector) statusSelector.value = '';
+    
+    const statusIndicator = this.sidebar.querySelector('#crm-current-status');
+    if (statusIndicator) statusIndicator.textContent = '';
+    
+    const notesInput = this.sidebar.querySelector('#crm-notes-input');
+    if (notesInput) notesInput.value = '';
+    
+    // Hide reminder display
+    const reminderDisplay = this.sidebar.querySelector('#crm-reminder-display');
+    const setReminderBtn = this.sidebar.querySelector('#crm-set-reminder-btn');
+    if (reminderDisplay) reminderDisplay.style.display = 'none';
+    if (setReminderBtn) setReminderBtn.style.display = 'block';
+  }
+
+  /**
+   * Show message when not authenticated
+   */
+  showNotAuthenticatedMessage() {
+    const chatNameEl = this.sidebar.querySelector('#crm-chat-name');
+    if (chatNameEl) {
+      chatNameEl.textContent = 'Backend not connected';
+    }
+  }
+
+  /**
+   * Show connection error message
+   */
+  showConnectionError() {
+    const chatNameEl = this.sidebar.querySelector('#crm-chat-name');
+    if (chatNameEl) {
+      chatNameEl.textContent = 'Connection error - check backend';
     }
   }
 
@@ -1142,10 +1314,20 @@ class SidebarInjector {
       chatNameEl.textContent = name;
     }
 
-    // Update status selector
+    // Update status selector and indicator
     const statusSelector = this.sidebar.querySelector('#crm-status-selector');
+    const statusIndicator = this.sidebar.querySelector('#crm-current-status');
     if (statusSelector) {
       statusSelector.value = chat.tag || '';
+    }
+    if (statusIndicator) {
+      const statusMap = {
+        'new_lead': '🟢',
+        'follow_up': '🟡',
+        'paid': '🔵',
+        'closed': '⚫'
+      };
+      statusIndicator.textContent = statusMap[chat.tag] || '';
     }
 
     // Update notes

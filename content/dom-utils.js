@@ -348,6 +348,52 @@ class DOMUtils {
       '#app'
     ]);
   }
+
+  /**
+   * Try to detect the user's own WhatsApp number
+   * This is extracted from various places in WhatsApp Web
+   * @returns {string|null} Phone number or null if not found
+   */
+  static detectOwnNumber() {
+    // Strategy 1: Check local storage for WhatsApp data
+    try {
+      const waData = localStorage.getItem('last-wid-md');
+      if (waData) {
+        const match = waData.match(/(\d{10,15})/);
+        if (match) return match[1];
+      }
+    } catch (e) {}
+
+    // Strategy 2: Check for profile button with number in title
+    const profileBtn = this.safeQuerySelector([
+      '[data-testid="menu-bar-user-menu"]',
+      '[data-testid="default-user"]',
+      'header [data-icon="default-user"]'
+    ]);
+    if (profileBtn) {
+      const title = profileBtn.getAttribute('title') || profileBtn.closest('[title]')?.getAttribute('title');
+      if (title) {
+        const match = title.match(/(\d{10,15})/);
+        if (match) return match[1];
+      }
+    }
+
+    // Strategy 3: Look for phone number in profile drawer if open
+    const profileDrawer = this.safeQuerySelector([
+      '[data-testid="drawer-middle"]',
+      '[data-testid="profile-drawer"]'
+    ]);
+    if (profileDrawer) {
+      const phoneSpan = profileDrawer.querySelector('span[title*="+"], span[dir="ltr"]');
+      if (phoneSpan) {
+        const text = phoneSpan.textContent || phoneSpan.getAttribute('title');
+        const match = text?.match(/(\d{10,15})/);
+        if (match) return match[1];
+      }
+    }
+
+    return null;
+  }
 }
 
 // Export for use in other scripts

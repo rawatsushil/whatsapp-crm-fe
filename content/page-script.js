@@ -9,7 +9,9 @@
   window.WACRM = {
     ChatCollection: null,
     Cmd: null,
-    isReady: false
+    Conn: null,
+    isReady: false,
+    myNumber: null
   };
 
   /**
@@ -26,16 +28,27 @@
     try {
       const chatCollectionModule = window.require('WAWebChatCollection');
       const cmdModule = window.require('WAWebCmd');
+      const connModule = window.require('WAWebUserPrefsMeUser');
 
       const chatCollection = chatCollectionModule?.ChatCollection;
       const cmd = cmdModule?.Cmd;
+      const conn = connModule;
 
       if (chatCollection && cmd) {
         window.WACRM.ChatCollection = chatCollection;
         window.WACRM.Cmd = cmd;
+        window.WACRM.Conn = conn;
         window.WACRM.isReady = true;
-        console.log('WhatsApp CRM: Bridge is READY');
-        window.postMessage({ type: 'WA_CRM_STORE_READY' }, '*');
+        
+        // Try to get user's own number
+        const myNumber = getMyNumber();
+        window.WACRM.myNumber = myNumber;
+        
+        console.log('WhatsApp CRM: Bridge is READY, my number:', myNumber);
+        window.postMessage({ 
+          type: 'WA_CRM_STORE_READY',
+          myNumber: myNumber
+        }, '*');
       } else {
         console.log('WhatsApp CRM: Modules not available yet, retrying...');
         setTimeout(initBridge, 2000);
@@ -43,6 +56,49 @@
     } catch (e) {
       console.error('WhatsApp CRM: Error initializing bridge:', e);
       setTimeout(initBridge, 2000);
+    }
+  }
+
+  /**
+   * Get the user's own WhatsApp number
+   */
+  function getMyNumber() {
+    try {
+      // Try multiple methods to get the user's number
+      
+      // Method 1: WAWebUserPrefsMeUser
+      if (window.WACRM.Conn?.getMeUser) {
+        const me = window.WACRM.Conn.getMeUser();
+        if (me?.user) return me.user;
+      }
+      
+      // Method 2: Try to access via require
+      try {
+        const meUser = window.require('WAWebUserPrefsMeUser');
+        const me = meUser?.getMeUser?.();
+        if (me?.user) return me.user;
+      } catch (e) {}
+      
+      // Method 3: Check localStorage
+      try {
+        const waData = localStorage.getItem('last-wid-md');
+        if (waData) {
+          const match = waData.match(/(\d{10,15})/);
+          if (match) return match[1];
+        }
+      } catch (e) {}
+      
+      // Method 4: Check WAWebWid
+      try {
+        const widModule = window.require('WAWebWidFactory');
+        const wid = widModule?.createWid?.();
+        if (wid?.user) return wid.user;
+      } catch (e) {}
+      
+      return null;
+    } catch (e) {
+      console.error('WhatsApp CRM: Error getting my number:', e);
+      return null;
     }
   }
 
@@ -93,6 +149,11 @@
     if (type === 'WA_CRM_OPEN_CHAT' && chatId) {
       const success = await openChat(chatId);
       window.postMessage({ type: 'WA_CRM_OPEN_CHAT_RESULT', success, chatId }, '*');
+    }
+    
+    if (type === 'WA_CRM_GET_MY_NUMBER') {
+      const myNumber = getMyNumber();
+      window.postMessage({ type: 'WA_CRM_MY_NUMBER', myNumber }, '*');
     }
   });
 

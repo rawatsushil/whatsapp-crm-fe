@@ -32,6 +32,9 @@ class SidebarInjector {
     // Add toggle button
     this.addToggleButton();
 
+    // Check for version updates
+    this.checkVersion();
+
     // Listen for chat changes
     window.addEventListener('whatsapp-crm:chat-changed', (e) => {
       this.onChatChanged(e.detail);
@@ -39,6 +42,110 @@ class SidebarInjector {
 
     // Inject page-context script and set up bridge
     this.setupBridge();
+  }
+
+  /**
+   * Get current extension version from manifest
+   */
+  getCurrentVersion() {
+    try {
+      return chrome.runtime.getManifest().version;
+    } catch (e) {
+      return '1.0.0';
+    }
+  }
+
+  /**
+   * Check for version updates
+   */
+  async checkVersion() {
+    const currentVersion = this.getCurrentVersion();
+    
+    // Update version badge in header
+    const versionBadge = this.sidebar.querySelector('#crm-version-badge');
+    if (versionBadge) {
+      versionBadge.textContent = `v${currentVersion}`;
+    }
+
+    // Check if we should skip the update check (dismissed recently)
+    const { updateDismissedAt } = await chrome.storage.local.get(['updateDismissedAt']);
+    const dismissedRecently = updateDismissedAt && (Date.now() - updateDismissedAt) < 24 * 60 * 60 * 1000; // 24 hours
+
+    try {
+      const response = await fetch(`${this.apiBaseUrl}/version/check?current=${currentVersion}`);
+      
+      if (!response.ok) {
+        console.log('Version check failed:', response.status);
+        return;
+      }
+
+      const versionInfo = await response.json();
+      
+      if (versionInfo.updateType === 'hard') {
+        // Show hard block modal
+        this.showUpdateModal(versionInfo);
+      } else if (versionInfo.updateType === 'soft' && !dismissedRecently) {
+        // Show soft nudge banner
+        this.showUpdateBanner(versionInfo);
+      }
+    } catch (error) {
+      console.log('Version check error (server may be offline):', error.message);
+    }
+  }
+
+  /**
+   * Show update banner (soft nudge)
+   */
+  showUpdateBanner(versionInfo) {
+    const banner = this.sidebar.querySelector('#crm-update-banner');
+    const versionEl = this.sidebar.querySelector('#crm-update-version');
+    const updateBtn = this.sidebar.querySelector('#crm-update-btn');
+    const dismissBtn = this.sidebar.querySelector('#crm-update-dismiss');
+
+    if (!banner) return;
+
+    if (versionEl) versionEl.textContent = `v${versionInfo.latestVersion}`;
+    
+    if (updateBtn) {
+      updateBtn.onclick = () => {
+        window.open(versionInfo.downloadUrl, '_blank');
+      };
+    }
+
+    if (dismissBtn) {
+      dismissBtn.onclick = async () => {
+        banner.style.display = 'none';
+        await chrome.storage.local.set({ updateDismissedAt: Date.now() });
+      };
+    }
+
+    banner.style.display = 'block';
+  }
+
+  /**
+   * Show update modal (hard block)
+   */
+  showUpdateModal(versionInfo) {
+    const modal = this.sidebar.querySelector('#crm-update-modal');
+    const currentVersionEl = this.sidebar.querySelector('#crm-current-version');
+    const requiredVersionEl = this.sidebar.querySelector('#crm-required-version');
+    const notesEl = this.sidebar.querySelector('#crm-update-notes');
+    const updateBtn = this.sidebar.querySelector('#crm-update-modal-btn');
+
+    if (!modal) return;
+
+    if (currentVersionEl) currentVersionEl.textContent = `v${this.getCurrentVersion()}`;
+    if (requiredVersionEl) requiredVersionEl.textContent = `v${versionInfo.minVersion}`;
+    
+    if (notesEl && versionInfo.releaseNotes) {
+      notesEl.innerHTML = `<strong>What's new:</strong><br>${versionInfo.releaseNotes.replace(/\n/g, '<br>')}`;
+    }
+
+    if (updateBtn) {
+      updateBtn.href = versionInfo.downloadUrl;
+    }
+
+    modal.style.display = 'flex';
   }
 
   /**
@@ -253,6 +360,34 @@ class SidebarInjector {
         <button class="crm-close-btn" id="crm-close-btn">×</button>
       </div>
       
+      <!-- Update Banner (Soft Nudge) -->
+      <div id="crm-update-banner" class="crm-update-banner" style="display: none;">
+        <div class="crm-update-banner-content">
+          <span class="crm-update-icon">🚀</span>
+          <div class="crm-update-text">
+            <strong>Update available!</strong>
+            <span id="crm-update-version">v1.1.0</span>
+          </div>
+          <button class="crm-update-btn" id="crm-update-btn">Update</button>
+          <button class="crm-update-dismiss" id="crm-update-dismiss">×</button>
+        </div>
+      </div>
+
+      <!-- Hard Block Modal -->
+      <div id="crm-update-modal" class="crm-update-modal" style="display: none;">
+        <div class="crm-update-modal-content">
+          <div class="crm-update-modal-icon">⚠️</div>
+          <h3>Update Required</h3>
+          <p>Your version is outdated and no longer supported. Please update to continue using WhatsApp CRM.</p>
+          <div class="crm-update-modal-versions">
+            <span>Your version: <strong id="crm-current-version">v1.0.0</strong></span>
+            <span>Required: <strong id="crm-required-version">v1.1.0</strong></span>
+          </div>
+          <div class="crm-update-modal-notes" id="crm-update-notes"></div>
+          <a href="#" class="crm-btn-primary crm-update-modal-btn" id="crm-update-modal-btn" target="_blank">Update Now</a>
+        </div>
+      </div>
+
       <!-- Onboarding Section (Number Detection) -->
       <div id="crm-onboarding-section" class="crm-sidebar-content" style="display: none;">
         <div class="crm-onboarding">
@@ -428,6 +563,11 @@ class SidebarInjector {
             <button class="crm-btn-primary" id="crm-reminder-modal-save">Save</button>
           </div>
         </div>
+      </div>
+
+      <!-- Footer -->
+      <div class="crm-sidebar-footer">
+        <span class="crm-version-badge" id="crm-version-badge">v1.0.0</span>
       </div>
     `;
   }
@@ -1258,7 +1398,7 @@ class SidebarInjector {
         chatName = null; // Don't save placeholder text
       }
 
-      console.log('Creating chat:', { rawChatId: chatId, normalizedChatId, phoneNumber, chatName });
+      console.log('Creating chat:', { rawChatId: chatId, normalizedChatId, chatName });
 
       const response = await fetch(`${this.apiBaseUrl}/chats`, {
         method: 'POST',
@@ -1268,7 +1408,6 @@ class SidebarInjector {
         },
         body: JSON.stringify({
           whatsappId: normalizedChatId,
-          phoneNumber,
           chatName
         })
       });
@@ -1364,10 +1503,56 @@ class SidebarInjector {
       });
       textEl.textContent = `Reminder set for ${formatted}`;
       displayEl.style.display = 'flex';
+      displayEl.dataset.reminderId = activeReminder.id; // Store ID for removal
       if (setBtn) setBtn.style.display = 'none';
     } else {
-      if (displayEl) displayEl.style.display = 'none';
+      if (displayEl) {
+        displayEl.style.display = 'none';
+        delete displayEl.dataset.reminderId;
+      }
       if (setBtn) setBtn.style.display = 'block';
+    }
+  }
+
+  /**
+   * Remove the active reminder for current chat
+   */
+  async removeReminder() {
+    const displayEl = this.sidebar.querySelector('#crm-reminder-display');
+    const reminderId = displayEl?.dataset.reminderId;
+    
+    if (!reminderId) {
+      console.warn('No reminder ID found to remove');
+      return;
+    }
+
+    try {
+      const { token } = await chrome.storage.local.get(['token']);
+      if (!token) return;
+
+      const response = await fetch(`${this.apiBaseUrl}/reminders/${reminderId}`, {
+        method: 'DELETE',
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
+      });
+
+      if (response.ok) {
+        // Clear the display
+        this.updateReminderDisplay([]);
+        
+        // Cancel the Chrome alarm if scheduled
+        chrome.runtime.sendMessage({ 
+          type: 'CANCEL_REMINDER', 
+          reminderId: reminderId 
+        });
+        
+        console.log('Reminder removed successfully');
+      } else {
+        console.error('Failed to remove reminder');
+      }
+    } catch (error) {
+      console.error('Error removing reminder:', error);
     }
   }
 
@@ -1541,6 +1726,7 @@ class SidebarInjector {
       return;
     }
 
+    // Create date in local timezone, then convert to ISO for storage
     const reminderTime = new Date(`${date}T${time}`).toISOString();
     const message = messageInput?.value || '';
 
@@ -1582,6 +1768,8 @@ class SidebarInjector {
       });
 
       if (reminderResponse.ok) {
+        const savedReminder = await reminderResponse.json();
+        
         // Hide modal
         this.hideReminderModal();
 
@@ -1591,7 +1779,12 @@ class SidebarInjector {
         // Schedule notification in background
         chrome.runtime.sendMessage({
           type: 'SCHEDULE_REMINDER',
-          reminder: await reminderResponse.json()
+          reminder: {
+            id: savedReminder.id,
+            reminderTime: reminderTime,
+            message: message,
+            chatId: chatId
+          }
         });
       }
     } catch (error) {

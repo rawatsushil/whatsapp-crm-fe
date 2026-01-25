@@ -6,11 +6,34 @@
 // Listen for reminder scheduling requests
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (message.type === 'SCHEDULE_REMINDER') {
-    scheduleReminder(message.reminder);
-    sendResponse({ success: true });
+    scheduleReminder(message.reminder)
+      .then(() => sendResponse({ success: true }))
+      .catch(err => sendResponse({ success: false, error: err.message }));
+    return true;
+  } else if (message.type === 'CANCEL_REMINDER') {
+    cancelReminder(message.reminderId)
+      .then(() => sendResponse({ success: true }))
+      .catch(err => sendResponse({ success: false, error: err.message }));
+    return true;
   }
-  return true; // Keep channel open for async response
+  return false;
 });
+
+/**
+ * Cancel a scheduled reminder
+ * @param {string} reminderId - Reminder ID
+ */
+async function cancelReminder(reminderId) {
+  const alarmName = `reminder_${reminderId}`;
+  
+  // Clear the Chrome alarm
+  await chrome.alarms.clear(alarmName);
+  
+  // Remove stored reminder data
+  await chrome.storage.local.remove([alarmName]);
+  
+  console.log('Reminder cancelled:', reminderId);
+}
 
 // Listen for alarm triggers (reminders)
 chrome.alarms.onAlarm.addListener((alarm) => {
@@ -73,12 +96,9 @@ async function triggerReminder(reminder) {
   
   chrome.notifications.create(notificationId, {
     type: 'basic',
-    iconUrl: 'icons/icon48.png',
+    iconUrl: chrome.runtime.getURL('icons/icon48.png'),
     title: 'Follow-up Reminder',
     message: reminder.message || 'You have a follow-up reminder',
-    buttons: [
-      { title: 'Open Chat' }
-    ],
     requireInteraction: true
   });
 

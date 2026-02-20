@@ -3,6 +3,21 @@
  * Handles reminders, notifications, and API communication
  */
 
+// Default API URL (will be overridden by config)
+const DEFAULT_API_URL = 'http://localhost:3000/api';
+
+/**
+ * Get API base URL from storage or use default
+ */
+async function getApiBaseUrl() {
+  try {
+    const { apiBaseUrl } = await chrome.storage.local.get(['apiBaseUrl']);
+    return apiBaseUrl || DEFAULT_API_URL;
+  } catch {
+    return DEFAULT_API_URL;
+  }
+}
+
 // Listen for reminder scheduling requests
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (message.type === 'SCHEDULE_REMINDER') {
@@ -156,7 +171,7 @@ async function sendEmailNotification(reminder) {
     const { token } = await chrome.storage.local.get(['token']);
     if (!token) return;
 
-    const apiBaseUrl = 'http://localhost:3000/api'; // TODO: Make configurable
+    const apiBaseUrl = await getApiBaseUrl();
     
     await fetch(`${apiBaseUrl}/reminders/${reminder.id}/notify`, {
       method: 'POST',
@@ -178,7 +193,7 @@ async function markReminderNotified(reminderId) {
     const { token } = await chrome.storage.local.get(['token']);
     if (!token) return;
 
-    const apiBaseUrl = 'http://localhost:3000/api'; // TODO: Make configurable
+    const apiBaseUrl = await getApiBaseUrl();
     
     await fetch(`${apiBaseUrl}/reminders/${reminderId}`, {
       method: 'PATCH',
@@ -210,7 +225,7 @@ async function checkDueReminders() {
     const { token } = await chrome.storage.local.get(['token']);
     if (!token) return;
 
-    const apiBaseUrl = 'http://localhost:3000/api'; // TODO: Make configurable
+    const apiBaseUrl = await getApiBaseUrl();
     
     const response = await fetch(`${apiBaseUrl}/reminders/due`, {
       headers: {

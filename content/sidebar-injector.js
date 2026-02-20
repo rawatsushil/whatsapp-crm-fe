@@ -6,7 +6,7 @@ class SidebarInjector {
   constructor() {
     this.sidebar = null;
     this.isVisible = false;
-    this.apiBaseUrl = 'http://localhost:3000/api'; // TODO: Make configurable
+    this.apiBaseUrl = (window.WHATSAPP_CRM_CONFIG?.API_BASE_URL) || 'http://localhost:3000/api';
     this.activeTab = 'overview'; // 'overview' or 'chat'
     this.workQueueData = {
       counts: { new_lead: 0, follow_up: 0, paid: 0, closed: 0 },

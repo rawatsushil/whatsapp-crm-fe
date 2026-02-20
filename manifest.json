@@ -11,7 +11,7 @@
   ],
   "host_permissions": [
     "https://web.whatsapp.com/*",
-    "http://localhost:3000/*"
+    "https://*.vercel.app/*"
   ],
   "content_scripts": [
     {
@@ -19,6 +19,7 @@
         "https://web.whatsapp.com/*"
       ],
       "js": [
+        "config.js",
         "content/dom-utils.js",
         "content/chat-observer.js",
         "content/sidebar-injector.js"

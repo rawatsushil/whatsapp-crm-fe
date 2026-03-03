@@ -6,8 +6,7 @@
   "permissions": [
     "storage",
     "alarms",
-    "notifications",
-    "identity"
+    "notifications"
   ],
   "host_permissions": [
     "https://web.whatsapp.com/*",
